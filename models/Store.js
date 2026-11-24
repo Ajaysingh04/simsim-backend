@@ -1,0 +1,82 @@
+import mongoose from 'mongoose';
+
+const storeSchema = new mongoose.Schema({
+  name: { type: String, required: true, index: true },
+  description: { type: String },
+  bannerImage: { type: String, required: true },
+  storeType: { type: String, enum: ['grocery', 'pharmacy', 'electronics', 'essentials', 'product'], default: 'grocery' },
+  rating: { type: Number, default: 0 },
+  reviewsCount: { type: Number, default: 0 },
+  deliveryTime: { type: Number, required: true }, // average in mins
+  distance: { type: Number }, // in km from user coordinates
+  isActive: { type: Boolean, default: true },
+  featured: { type: Boolean, default: false },
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  approvalNotes: { type: String, default: '' },
+  franchisePurchaseStatus: { type: String, enum: ['not_started', 'paid'], default: 'not_started' },
+  franchisePlan: { type: String, default: '' },
+  paymentReference: { type: String, default: '' },
+  paymentMethod: { type: String, default: 'razorpay' },
+  paymentStatus: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
+  invoiceNumber: { type: String, default: '' },
+  invoiceMeta: {
+    planName: { type: String, default: '' },
+    termMonths: { type: Number, default: 0 },
+    amount: { type: Number, default: 0 },
+    gst: { type: Number, default: 0 },
+    total: { type: Number, default: 0 },
+    paidAt: { type: Date, default: null },
+    currency: { type: String, default: 'INR' },
+    paymentIntentId: { type: String, default: '' }
+  },
+  onboardingCompleted: { type: Boolean, default: false },
+  kycStatus: { type: String, enum: ['not_submitted', 'pending_review', 'approved', 'rejected'], default: 'not_submitted' },
+  documents: {
+    panCard: { type: String },
+    gstCertificate: { type: String },
+    shopFrontPhoto: { type: String },
+    addressProof: { type: String },
+    bankProof: { type: String }
+  },
+  category: { type: String, default: 'Grocery & Essentials' }, // Used for featured tags
+  costForTwo: { type: Number, default: 0 },
+  owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  staff: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    role: { type: String, enum: ['Manager', 'Staff'] },
+    status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
+    addedOn: { type: Date, default: Date.now }
+  }],
+  staffInvites: [{
+    email: { type: String, required: true },
+    role: { type: String, required: true },
+    token: { type: String, required: true },
+    expiresAt: { type: Date, required: true },
+    invitedOn: { type: Date, default: Date.now }
+  }],
+  address: {
+    street: { type: String },
+    city: { type: String },
+    state: { type: String },
+    zipCode: { type: String }
+  },
+  bankDetails: {
+    bankName: { type: String },
+    accountHolderName: { type: String },
+    accountNumber: { type: String },
+    ifscCode: { type: String }
+  },
+  gstDetails: {
+    gstNumber: { type: String },
+    panNumber: { type: String }
+  },
+  openingHours: {
+    open: { type: String, default: '08:00' },
+    close: { type: String, default: '22:00' }
+  },
+  inventoryManagement: { type: Boolean, default: true },
+  deliveryRadius: { type: Number, default: 5 } // in km for ultra-fast delivery
+}, { timestamps: true });
+
+const Store = mongoose.model('Store', storeSchema);
+export default Store;

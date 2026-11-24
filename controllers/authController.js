@@ -1,0 +1,582 @@
+import User from '../models/User.js';
+import Store from '../models/Store.js';
+import sendEmail from '../utils/sendEmail.js';
+import { 
+  generateAccessToken, 
+  generateRefreshToken, 
+  sendRefreshTokenCookie 
+} from '../utils/generateTokens.js';
+import jwt from 'jsonwebtoken';
+
+// Helper to generate a 6-digit numeric OTP
+const generateOtp = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+const normalizePhone = (value = '') => {
+  return String(value || '').replace(/\D/g, '');
+};
+
+const findUserByIdentifier = async (identifier) => {
+  const raw = String(identifier || '').trim();
+  if (!raw) return null;
+
+  const normalizedPhone = normalizePhone(raw);
+  const normalizedEmail = raw.toLowerCase();
+
+  if (normalizedPhone.length >= 10) {
+    const byPhone = await User.findOne({ phone: normalizedPhone });
+    if (byPhone) return byPhone;
+  }
+
+  return await User.findOne({ email: normalizedEmail });
+};
+
+// @desc    Register a new user
+// @route   POST /api/auth/signup
+// @access  Public
+export const signup = async (req, res) => {
+  const { name, email, password, phone, role } = req.body;
+
+  try {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedPhone = normalizePhone(phone);
+
+    if (!normalizedEmail || !password) {
+      return res.status(400).json({ message: 'Email and password are required.' });
+    }
+
+    const userExists = await User.findOne({
+      $or: [{ email: normalizedEmail }, ...(normalizedPhone ? [{ phone: normalizedPhone }] : [])]
+    });
+
+    if (userExists) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    const otpCode = generateOtp();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
+    const user = await User.create({
+      name,
+      email: normalizedEmail,
+      phone: normalizedPhone || undefined,
+      password,
+      role: role || 'user',
+      isVerified: true,
+      otp: { code: otpCode, expiresAt: otpExpires }
+    });
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    user.refreshToken = refreshToken;
+    await user.save();
+    sendRefreshTokenCookie(res, refreshToken);
+
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: 'Welcome to SimSim 10-Minute Grocery Delivery',
+        html: `<h3>Welcome to SimSim, ${user.name}!</h3>
+               <p>Your SimSim quick-commerce account is now active.</p>`
+      });
+    } catch (emailErr) {
+      // Don't fail signup if SMTP is not configured
+    }
+
+    res.status(201).json({
+      message: 'Registration successful! Welcome to SimSim.',
+      token: accessToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Verify OTP code
+// @route   POST /api/auth/otp/verify
+// @access  Public
+export const verifyOtp = async (req, res) => {
+  const { email, phone, code } = req.body;
+
+  try {
+    const identifier = email || phone;
+    const user = await findUserByIdentifier(identifier);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ message: 'User already verified' });
+    }
+
+    if (!user.otp || user.otp.code !== code || new Date() > user.otp.expiresAt) {
+      return res.status(400).json({ message: 'Invalid or expired verification code' });
+    }
+
+    user.isVerified = true;
+    user.otp = undefined; // clear OTP details
+    await user.save();
+
+    // Sign tokens on success
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    sendRefreshTokenCookie(res, refreshToken);
+
+    res.json({
+      message: 'Account verified successfully!',
+      token: accessToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Resend OTP code
+// @route   POST /api/auth/otp/resend
+// @access  Public
+export const resendOtp = async (req, res) => {
+  const { email, phone } = req.body;
+
+  try {
+    const identifier = email || phone;
+    const user = await findUserByIdentifier(identifier);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ message: 'User already verified' });
+    }
+
+    const otpCode = generateOtp();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
+    user.otp = { code: otpCode, expiresAt: otpExpires };
+    await user.save();
+
+    await sendEmail({
+      email: user.email,
+      subject: 'New verification OTP for RoseDash',
+      html: `<h3>Account Verification</h3>
+             <p>Use the following 6-digit OTP to verify your email address:</p>
+             <h1 style="color: #f43f5e; font-size: 2.25rem; font-weight: 700; letter-spacing: 0.25rem;">${otpCode}</h1>
+             <p>This code expires in 10 minutes.</p>`
+    });
+
+    res.json({ message: 'Verification OTP sent to your email.' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Authenticate User & get token
+// @route   POST /api/auth/login
+// @access  Public
+export const login = async (req, res) => {
+  const { email, phone, password } = req.body;
+
+  try {
+    const identifier = email || phone;
+    const user = await findUserByIdentifier(identifier);
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid email/phone or password' });
+    }
+
+    if (!user.isVerified) {
+      user.isVerified = true;
+      await user.save();
+    }
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    sendRefreshTokenCookie(res, refreshToken);
+
+    res.json({
+      message: 'Login successful!',
+      token: accessToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Refresh access token
+// @route   POST /api/auth/refresh
+// @access  Public
+export const refresh = async (req, res) => {
+  const token = req.cookies.refreshToken;
+
+  if (!token) {
+    return res.status(401).json({ message: 'No refresh token provided' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET || 'super_refresh_secret_12345_67890_abc');
+    const user = await User.findById(decoded.id);
+
+    if (!user || user.refreshToken !== token) {
+      return res.status(403).json({ message: 'Invalid refresh token' });
+    }
+
+    const newAccessToken = generateAccessToken(user);
+    res.json({ token: newAccessToken });
+  } catch (error) {
+    res.status(403).json({ message: 'Refresh token invalid or expired' });
+  }
+};
+
+// @desc    Logout user & clear refresh cookies
+// @route   POST /api/auth/logout
+// @access  Private (JWT Access)
+export const logout = async (req, res) => {
+  const token = req.cookies.refreshToken;
+
+  try {
+    if (token) {
+      const user = await User.findOne({ refreshToken: token });
+      if (user) {
+        user.refreshToken = undefined;
+        await user.save();
+      }
+    }
+
+    const isProd = process.env.NODE_ENV === 'production';
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'strict'
+    });
+
+    res.json({ message: 'Logged out successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Forgot Password request
+// @route   POST /api/auth/forgot-password
+// @access  Public
+export const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+
+  try {
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.status(404).json({ message: 'No account associated with this email' });
+    }
+
+    const resetOtp = generateOtp();
+    const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+
+    user.otp = { code: resetOtp, expiresAt: expires };
+    await user.save();
+
+    await sendEmail({
+      email: user.email,
+      subject: 'Reset your account password',
+      html: `<h3>Password Reset Requested</h3>
+             <p>Use the following 6-digit code to reset your account password:</p>
+             <h1 style="color: #f43f5e; font-size: 2.25rem; font-weight: 700; letter-spacing: 0.25rem;">${resetOtp}</h1>
+             <p>If you did not make this request, please secure your account immediately.</p>`
+    });
+
+    res.json({ message: 'Password reset code has been sent to your email.' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Reset Password with OTP
+// @route   POST /api/auth/reset-password
+// @access  Public
+export const resetPassword = async (req, res) => {
+  const { email, code, newPassword } = req.body;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const normalizedCode = String(code || '').trim();
+
+  try {
+    if (!normalizedEmail || !normalizedCode || !newPassword) {
+      return res.status(400).json({ message: 'Email, reset code, and new password are required.' });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (!user.otp || user.otp.code !== normalizedCode || new Date() > user.otp.expiresAt) {
+      return res.status(400).json({ message: 'Invalid or expired reset code' });
+    }
+
+    // Update password
+    user.password = newPassword;
+    user.otp = undefined; // clear otp
+    await user.save();
+
+    res.json({ message: 'Password has been reset successfully. Please log in.' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Google login success callback helper (redirect details)
+// @route   GET /api/auth/google/success
+// @access  Private
+export const googleSuccess = async (req, res) => {
+  if (req.user) {
+    const user = req.user;
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    sendRefreshTokenCookie(res, refreshToken);
+
+    // Redirect to client home page with token query param
+    res.redirect(`${process.env.CLIENT_URL || 'http://localhost:5173'}/auth-callback?token=${accessToken}`);
+  } else {
+    res.status(401).json({ message: 'Google Authentication failed' });
+  }
+};
+
+// @desc    Sync Clerk User to MongoDB
+// @route   POST /api/auth/clerk-sync
+// @access  Public
+export const clerkSync = async (req, res) => {
+  const { clerkId, email, name, avatar, role } = req.body;
+  
+  try {
+    let user = await User.findOne({ clerkId });
+    if (!user) {
+      user = await User.findOne({ email });
+      if (user) {
+        user.clerkId = clerkId;
+        user.avatar = avatar || user.avatar;
+      } else {
+        user = await User.create({
+          clerkId,
+          name: name || 'Clerk User',
+          email,
+          avatar,
+          role: role && role !== 'user' ? role : 'user',
+          isVerified: true,
+          password: Math.random().toString(36).slice(-8),
+        });
+      }
+    }
+
+    const explicitRole = role && ['admin', 'delivery', 'partner', 'user'].includes(role) ? role : null;
+    if (explicitRole && explicitRole !== 'user') {
+      user.role = explicitRole;
+    } else if (!user.role || user.role === 'user') {
+      user.role = user.role || 'user';
+    }
+    
+    const envAdminEmails = (process.env.ADMIN_EMAILS || 'admin@appsica.com,ajayworkon04@gmail.com,ajaysingh04@gmail.com')
+      .split(',')
+      .map(item => item.trim().toLowerCase())
+      .filter(Boolean);
+    const adminEmails = [...new Set([...envAdminEmails, 'admin@appsica.com', 'ajayworkon04@gmail.com', 'ajaysingh04@gmail.com'])];
+    if (email && adminEmails.includes(String(email).toLowerCase()) && user.role !== 'admin') {
+      user.role = 'admin';
+    }
+    
+    // Hardcoded partner emails
+    const partnerEmails = ['appsica086@gmail.com'];
+    if (email && partnerEmails.includes(String(email).toLowerCase()) && user.role !== 'partner') {
+      user.role = 'partner';
+    }
+    
+    await user.save();
+    
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    sendRefreshTokenCookie(res, refreshToken);
+    
+    // Send Login Successful Email asynchronously
+    sendEmail({
+      email: user.email,
+      subject: 'Login Successful - Welcome to RoseDash!',
+      html: `
+        <div style="font-family: Arial, sans-serif; text-align: center; color: #333; padding: 30px 20px; max-w-[600px] margin: 0 auto;">
+          <h2 style="color: #046A47; margin-bottom: 20px;">Welcome Back, ${user.name}!</h2>
+          <p style="font-size: 16px; margin-bottom: 10px;">We noticed a successful login to your RoseDash account.</p>
+          <p style="font-size: 14px; color: #666; margin-bottom: 30px;">If this was you, you can safely ignore this email. Enjoy your premium shopping experience!</p>
+          <div style="margin-top: 30px; padding: 20px; background: #eefcf4; border: 1px solid #b2edca; border-radius: 15px; display: inline-block;">
+            <p style="margin: 0; font-weight: bold; color: #035538; font-size: 16px;">Quick Commerce at Your Fingertips</p>
+          </div>
+          <p style="font-size: 12px; color: #999; margin-top: 40px;">If you didn't log in recently, please secure your account immediately.</p>
+        </div>
+      `
+    }).catch(err => console.error("Failed to send login email:", err));
+    
+    res.json({
+      message: 'Clerk Sync successful!',
+      token: accessToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Demo login for client preview/evaluations
+// @route   POST /api/auth/demo-login
+// @access  Public
+export const demoLogin = async (req, res) => {
+  const { role = 'admin' } = req.body;
+  const targetRole = ['admin', 'partner', 'delivery', 'user'].includes(role) ? role : 'admin';
+
+  const demoProfiles = {
+    admin: {
+      name: 'Super Admin (Demo)',
+      email: 'admin.demo@quickcommerce.com',
+      phone: '9876543210',
+      role: 'admin',
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+    },
+    partner: {
+      name: 'Store Partner (Demo)',
+      email: 'partner.demo@quickcommerce.com',
+      phone: '9876543211',
+      role: 'partner',
+      avatar: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=200&q=80',
+    },
+    delivery: {
+      name: 'Delivery Rider (Demo)',
+      email: 'delivery.demo@quickcommerce.com',
+      phone: '9876543212',
+      role: 'delivery',
+      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
+    },
+    user: {
+      name: 'Customer (Demo)',
+      email: 'customer.demo@quickcommerce.com',
+      phone: '9876543213',
+      role: 'user',
+      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80',
+    },
+  };
+
+  const profile = demoProfiles[targetRole];
+
+  try {
+    let user = await User.findOne({ email: profile.email });
+    if (!user) {
+      user = await User.create({
+        name: profile.name,
+        email: profile.email,
+        phone: profile.phone,
+        password: 'DemoPassword@12345',
+        role: profile.role,
+        avatar: profile.avatar,
+        isVerified: true,
+        kyc: { status: 'approved' }
+      });
+    } else {
+      user.role = profile.role;
+      user.isVerified = true;
+      if (profile.role === 'delivery') {
+        user.kyc = { status: 'approved' };
+      }
+      await user.save();
+    }
+
+    if (profile.role === 'partner') {
+      let store = await Store.findOne({ owner: user._id });
+      if (!store) {
+        store = await Store.create({
+          name: 'Green Grocers Dark Store',
+          owner: user._id,
+          description: 'Demo store dashboard with full inventory & live orders.',
+          isActive: true,
+          status: 'approved',
+          franchisePurchaseStatus: 'paid',
+          onboardingCompleted: true,
+          kycStatus: 'approved',
+          category: 'Grocery',
+          cuisineTypes: ['Essentials', 'Fresh Food'],
+          deliveryTime: 15,
+          bannerImage: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80'
+        });
+      } else {
+        store.status = 'approved';
+        store.franchisePurchaseStatus = 'paid';
+        store.onboardingCompleted = true;
+        store.kycStatus = 'approved';
+        await store.save();
+      }
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    sendRefreshTokenCookie(res, refreshToken);
+
+    res.json({
+      message: `Demo login as ${targetRole} successful!`,
+      token: accessToken,
+      user: {
+        id: user._id,
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+        phone: user.phone,
+        isVerified: true,
+        kyc: user.kyc
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

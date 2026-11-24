@@ -1,0 +1,215 @@
+import mongoose from 'mongoose';
+import Store from '../models/Store.js';
+import sendEmail from '../utils/sendEmail.js';
+import { MOCK_STORES } from '../config/mockFallbackData.js';
+
+// @desc    Get all stores with search, category, and sort filters
+// @route   GET /api/stores
+// @access  Public
+export const getStores = async (req, res) => {
+  if (mongoose.connection.readyState !== 1) {
+    return res.json(MOCK_STORES);
+  }
+  const { search, cuisine, category, rating, featured, sort } = req.query;
+  let queryObject = { isActive: true, status: 'approved' };
+
+  // 0. Featured Filter
+  if (featured === 'true') {
+    queryObject.featured = true;
+  } else if (featured === 'false') {
+    queryObject.featured = false;
+  }
+
+  // 1. Cuisine/Category Filter
+  if (cuisine && cuisine !== 'all') {
+    queryObject.cuisineTypes = { $in: [new RegExp(cuisine, 'i')] };
+  }
+  if (category && category !== 'all') {
+    queryObject.category = new RegExp(category, 'i');
+  }
+
+  // 2. Search Query (matches store names or cuisines)
+  if (search) {
+    queryObject.$or = [
+      { name: { $regex: search, $options: 'i' } },
+      { cuisineTypes: { $in: [new RegExp(search, 'i')] } }
+    ];
+  }
+
+  // 3. Minimum Rating Filter
+  if (rating) {
+    queryObject.rating = { $gte: parseFloat(rating) };
+  }
+
+  try {
+    let query = Store.find(queryObject);
+
+    // 4. Sorting logic
+    if (sort === 'rating') {
+      query = query.sort({ rating: -1 });
+    } else if (sort === 'time') {
+      query = query.sort({ deliveryTime: 1 });
+    } else if (sort === 'cost-low') {
+      query = query.sort({ costForTwo: 1 });
+    } else if (sort === 'cost-high') {
+      query = query.sort({ costForTwo: -1 });
+    } else {
+      query = query.sort({ createdAt: -1 }); // Default recent
+    }
+
+    const stores = await query;
+    res.json(stores);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get single store by ID
+// @route   GET /api/stores/:id
+// @access  Public
+export const getStoreById = async (req, res) => {
+  try {
+    const store = await Store.findById(req.params.id);
+    if (!store) {
+      return res.status(404).json({ message: 'Store not found' });
+    }
+    res.json(store);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Create new store profile
+// @route   POST /api/admin/stores
+// @access  Private/Admin
+export const createStore = async (req, res) => {
+  const { name, description, cuisineTypes, category, deliveryTime, distance, costForTwo, featured, bannerImageUrl } = req.body;
+
+  try {
+    const bannerImage = req.fileUrl || bannerImageUrl || '/assets/res_default.jpg'; // use uploaded url or default
+
+    const store = await Store.create({
+      name,
+      description,
+      bannerImage,
+      category,
+      cuisineTypes: typeof cuisineTypes === 'string' ? cuisineTypes.split(',') : cuisineTypes,
+      deliveryTime: parseInt(deliveryTime),
+      distance: parseFloat(distance),
+      costForTwo: parseInt(costForTwo),
+      featured: featured === 'true' || featured === true,
+      status: 'approved'
+    });
+
+    res.status(201).json(store);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+export const getPartnerStoreRequests = async (req, res) => {
+  try {
+    const stores = await Store.find({ owner: { $exists: true } })
+      .populate('owner', 'name email phone role')
+      .sort({ createdAt: -1 });
+
+    res.json(stores);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const approveStoreRequest = async (req, res) => {
+  try {
+    const { status, approvalNotes } = req.body;
+    const store = await Store.findById(req.params.id).populate('owner', 'email name');
+
+    if (!store) {
+      return res.status(404).json({ message: 'Store request not found' });
+    }
+
+    const nextStatus = ['approved', 'rejected', 'pending'].includes(status) ? status : 'pending';
+    store.status = nextStatus;
+    if (nextStatus === 'approved') {
+      store.kycStatus = 'approved';
+    } else if (nextStatus === 'rejected') {
+      store.kycStatus = 'rejected';
+    } else {
+      store.kycStatus = 'pending_review';
+    }
+    if (approvalNotes !== undefined) store.approvalNotes = approvalNotes;
+    await store.save();
+
+    if (store.owner?.email) {
+      await sendEmail({
+        email: store.owner.email,
+        subject: `Store application ${nextStatus === 'approved' ? 'approved' : 'rejected'} for ${store.name}`,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:24px;border:1px solid #e2e8f0;border-radius:16px;">
+            <h2 style="margin-top:0;color:#0f172a;">Store application update</h2>
+            <p>Your store <strong>${store.name}</strong> has been <strong>${nextStatus}</strong>.</p>
+            <p><strong>Admin notes:</strong> ${approvalNotes || 'No extra notes provided.'}</p>
+            ${nextStatus === 'approved' ? '<p>Your store panel is now active and ready for setup.</p>' : '<p>Please update your documents or resubmit the application.</p>'}
+          </div>
+        `
+      });
+    }
+
+    res.json(store);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Update store profile
+// @route   PUT /api/admin/stores/:id
+// @access  Private/Admin
+export const updateStore = async (req, res) => {
+  try {
+    const store = await Store.findById(req.params.id);
+    if (!store) {
+      return res.status(404).json({ message: 'Store not found' });
+    }
+
+    // Merge updates
+    const updates = { ...req.body };
+    if (req.fileUrl) {
+      updates.bannerImage = req.fileUrl;
+    } else if (updates.bannerImageUrl) {
+      updates.bannerImage = updates.bannerImageUrl;
+    }
+    if (updates.cuisineTypes && typeof updates.cuisineTypes === 'string') {
+      updates.cuisineTypes = updates.cuisineTypes.split(',');
+    }
+
+    const updatedStore = await Store.findByIdAndUpdate(
+      req.params.id,
+      updates,
+      { new: true, runValidators: true }
+    );
+
+    res.json(updatedStore);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+// @desc    Delete store
+// @route   DELETE /api/admin/stores/:id
+// @access  Private/Admin
+export const deleteStore = async (req, res) => {
+  try {
+    const store = await Store.findById(req.params.id);
+    if (!store) {
+      return res.status(404).json({ message: 'Store not found' });
+    }
+
+    // Soft delete or hard delete? Let's disable it (soft-delete)
+    store.isActive = false;
+    await store.save();
+
+    res.json({ message: 'Store deactivated successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

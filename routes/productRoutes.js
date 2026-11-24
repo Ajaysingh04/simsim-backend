@@ -1,0 +1,78 @@
+import express from 'express';
+import {
+  getProducts,
+  getProductById,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  getCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+  bulkCreateCategories,
+  bulkCreateProducts
+} from '../controllers/productController.js';
+import { protect, restrictTo } from '../middleware/authMiddleware.js';
+import upload, { uploadToCloudinary } from '../middleware/uploadMiddleware.js';
+
+const router = express.Router();
+
+// Categories routes
+router.get('/categories', getCategories);
+router.post(
+  '/categories/bulk',
+  protect,
+  restrictTo('admin'),
+  bulkCreateCategories
+);
+
+router.post(
+  '/categories', 
+  protect, 
+  restrictTo('admin'), 
+  upload.single('image'), 
+  uploadToCloudinary, 
+  createCategory
+);
+router.put(
+  '/categories/:id', 
+  protect, 
+  restrictTo('admin'), 
+  upload.single('image'), 
+  uploadToCloudinary, 
+  updateCategory
+);
+router.delete('/categories/:id', protect, restrictTo('admin'), deleteCategory);
+
+// Dishes / Products routes
+router.get('/', getProducts);
+router.get('/:id', getProductById);
+
+router.post(
+  '/', 
+  protect, 
+  restrictTo('admin'), 
+  upload.single('image'), 
+  uploadToCloudinary, 
+  createProduct
+);
+
+router.post(
+  '/bulk',
+  protect,
+  restrictTo('admin'),
+  bulkCreateProducts
+);
+
+router.put(
+  '/:id', 
+  protect, 
+  restrictTo('admin'), 
+  upload.single('image'), 
+  uploadToCloudinary, 
+  updateProduct
+);
+
+router.delete('/:id', protect, restrictTo('admin'), deleteProduct);
+
+export default router;
