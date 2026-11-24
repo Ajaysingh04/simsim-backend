@@ -31,6 +31,7 @@ import bannerRoutes from './routes/bannerRoutes.js';
 import pageRoutes from './routes/pageRoutes.js';
 import supportRoutes from './routes/supportRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import vendorRoutes from './routes/vendorRoutes.js';
 
 import { errorHandler, notFound } from './middleware/errorMiddleware.js';
 
@@ -111,6 +112,7 @@ app.use('/api/banners', bannerRoutes);
 app.use('/api/pages', pageRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/vendor', vendorRoutes);
 
 // Base Route
 app.get('/', (req, res) => {
