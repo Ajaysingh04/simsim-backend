@@ -57,12 +57,16 @@ router.get('/ai/test-key', async (req, res) => {
   if (!key) return res.json({ error: 'No key found' });
 
   try {
-    const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${key.trim()}`;
-    const listRes = await fetch(listUrl);
-    const listData = await listRes.json();
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key.trim()}`;
+    const testRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: 'Say Hello in one word' }] }] })
+    });
+    const text = await testRes.text();
     res.json({
-      googleStatus: listRes.status,
-      availableModels: listData.models ? listData.models.map(m => m.name) : listData
+      googleStatus: testRes.status,
+      googleResponse: text
     });
   } catch (err) {
     res.json({ error: err.message });
