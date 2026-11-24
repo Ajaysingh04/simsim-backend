@@ -39,38 +39,9 @@ router.get('/ai/status', (req, res) => {
   const key = envKey ? process.env[envKey] : null;
   res.json({
     status: 'online',
-    detectedKeyName: envKey,
-    hasGeminiKey: Boolean(key && key !== 'your_gemini_api_key' && key.trim().length > 0),
-    keyPrefix: key ? (key.substring(0, 6) + '...') : null,
-    keyLength: key ? key.length : 0
+    aiService: 'Google Gemini AI',
+    active: Boolean(key && key.trim().length > 0)
   });
-});
-
-router.get('/ai/test-key', async (req, res) => {
-  const envKey = Object.keys(process.env).find(k => 
-    k.toLowerCase() === 'gemini_api_key' || 
-    k.toLowerCase() === 'gemini_key' || 
-    k.toLowerCase() === 'google_api_key' ||
-    k.toLowerCase() === 'gemini'
-  );
-  const key = envKey ? process.env[envKey] : null;
-  if (!key) return res.json({ error: 'No key found' });
-
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${key.trim()}`;
-    const testRes = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: 'Say Hello in one word' }] }] })
-    });
-    const text = await testRes.text();
-    res.json({
-      googleStatus: testRes.status,
-      googleResponse: text
-    });
-  } catch (err) {
-    res.json({ error: err.message });
-  }
 });
 router.get('/ai/recommendations', protect, getAIRecommendations);
 router.get('/ai/filter', getFilteredProducts);
