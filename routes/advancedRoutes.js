@@ -45,6 +45,33 @@ router.get('/ai/status', (req, res) => {
     keyLength: key ? key.length : 0
   });
 });
+
+router.get('/ai/test-key', async (req, res) => {
+  const envKey = Object.keys(process.env).find(k => 
+    k.toLowerCase() === 'gemini_api_key' || 
+    k.toLowerCase() === 'gemini_key' || 
+    k.toLowerCase() === 'google_api_key' ||
+    k.toLowerCase() === 'gemini'
+  );
+  const key = envKey ? process.env[envKey] : null;
+  if (!key) return res.json({ error: 'No key found' });
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key.trim()}`;
+    const testRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: 'Hi' }] }] })
+    });
+    const text = await testRes.text();
+    res.json({
+      googleStatus: testRes.status,
+      googleResponse: text
+    });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
 router.get('/ai/recommendations', protect, getAIRecommendations);
 router.get('/ai/filter', getFilteredProducts);
 router.get('/ai/surprise', getSurpriseProduct);
