@@ -148,7 +148,7 @@ Your role:
 4. If asked in Hindi, respond in friendly, natural Hindi or Hinglish. If asked in English, respond in English.
 5. Keep responses concise, well-structured with bullet points and friendly emojis (⚡, 🥦, 🥘, 🍎, 🛒).`;
 
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'];
+  const modelsToTry = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
 
   for (const model of modelsToTry) {
     try {
