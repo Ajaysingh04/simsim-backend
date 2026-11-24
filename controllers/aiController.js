@@ -122,12 +122,66 @@ export const getSurpriseProduct = async (req, res) => {
   }
 };
 
+// Google Gemini API integration (Free Tier via Google AI Studio)
+const callGeminiAI = async (userPrompt) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === 'your_gemini_api_key' || apiKey.trim().length === 0) {
+    return null;
+  }
+
+  try {
+    const systemInstruction = `You are "SimSim AI Chef & Quick Grocery Assistant" for SimSim, an instant 10-minute grocery delivery app in India.
+Your role:
+1. Help customers with cooking recipes, step-by-step instructions, and quick meal ideas (under 15-20 minutes).
+2. Recommend grocery ingredients available in an Indian supermarket (e.g. Amul Milk, Butter, Paneer, Curd, Fresh Tomatoes, Potatoes, Onions, Kashmiri Apples, Bread, Atta, Kurkure, Lays, Coca Cola, etc.).
+3. When suggesting ingredients, bold the item names (e.g. **Fresh Farm Tomato**, **Amul Butter**, **Malai Paneer**) and mention they can order all of them on SimSim in 10 minutes.
+4. If asked in Hindi, respond in friendly, natural Hindi or Hinglish. If asked in English, respond in English.
+5. Keep responses concise, well-structured with bullet points and friendly emojis (⚡, 🥦, 🥘, 🍎, 🛒).`;
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
+
+    const body = {
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: `${systemInstruction}\n\nCustomer question: ${userPrompt}` }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 800
+      }
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn('Gemini Flash call failed:', response.status, errText);
+      return null;
+    }
+
+    const data = await response.json();
+    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    return replyText ? replyText.trim() : null;
+  } catch (error) {
+    console.error('Gemini API request error:', error.message);
+    return null;
+  }
+};
+
 // AI Chatbot Assistant handler
 export const handleChatBot = async (req, res) => {
   try {
     const { message } = req.body;
-    const userId = req.user._id;
-    const cleanMsg = message.toLowerCase();
+    const userId = req.user?._id;
+    const cleanMsg = (message || '').toLowerCase();
 
     // 0. Check ADD TO CART / ORDER intent
     if (cleanMsg.startsWith('add ') || cleanMsg.startsWith('order ') || cleanMsg.includes('to cart')) {
@@ -155,58 +209,58 @@ export const handleChatBot = async (req, res) => {
               resName: productItem.store?.name || 'SimSim Quick Dark Store'
             }
           });
-        } else {
-          return res.status(200).json({
-            reply: `I couldn't find an exact match for "${searchItem}" in our current menu. Try searching for a specific dish like "Truffle Burger" or "Margherita Pizza".`
-          });
         }
       }
     }
 
     // 1. Check order query
-    if (cleanMsg.includes('order') || cleanMsg.includes('status') || cleanMsg.includes('track') || cleanMsg.includes('where')) {
+    if (userId && (cleanMsg.includes('order') || cleanMsg.includes('status') || cleanMsg.includes('track') || cleanMsg.includes('where is my order'))) {
       const latestOrder = await Order.findOne({ user: userId })
         .sort({ createdAt: -1 })
         .populate('store');
 
-      if (!latestOrder) {
+      if (latestOrder) {
         return res.status(200).json({
-          reply: "You haven't placed any orders yet. Would you like me to recommend some delicious options to get started?"
+          reply: `Your latest order from **${latestOrder.store?.name || 'SimSim Store'}** is currently **${latestOrder.status.toUpperCase()}**.\n- Total bill: ₹${latestOrder.billDetails?.grandTotal || latestOrder.totalAmount}\n- Order placed: ${new Date(latestOrder.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}\n\nTap **Track Live Order** in your Profile to view live GPS tracking!`
         });
       }
-
-      return res.status(200).json({
-        reply: `Your latest order from **${latestOrder.store.name}** is currently **${latestOrder.status.toUpperCase()}**.\n- Total bill: ₹${latestOrder.billDetails.grandTotal}\n- Order placed: ${new Date(latestOrder.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}\n\nLet me know if you want to track it on the map!`
-      });
     }
 
     // 2. Check coupon query
     if (cleanMsg.includes('coupon') || cleanMsg.includes('code') || cleanMsg.includes('discount') || cleanMsg.includes('offer')) {
       const coupons = await Coupon.find({ isActive: true }).limit(3);
-      if (coupons.length === 0) {
+      if (coupons.length > 0) {
+        let couponList = coupons.map(c => `- **${c.code}**: Get ${c.discountPercent}% off on orders above ₹${c.minOrderValue || 0}`).join('\n');
         return res.status(200).json({
-          reply: "We don't have any active discount coupons right now. However, you can spin the Spin & Win wheel in your Rewards Dashboard to win exciting rewards!"
+          reply: `Here are active discount coupons you can apply at checkout:\n\n${couponList}\n\nApply them at checkout to save instantly!`
         });
       }
+    }
 
-      let couponList = coupons.map(c => `- **${c.code}**: Get ${c.discountPercent}% off on orders above ₹${c.minOrderValue || 0}`).join('\n');
+    // 3. Invoke Google Gemini Free AI
+    const geminiReply = await callGeminiAI(message);
+    if (geminiReply) {
       return res.status(200).json({
-        reply: `Here are some active discount coupons you can apply at checkout:\n\n${couponList}`
+        reply: geminiReply
       });
     }
 
-    // 3. Check product recommendation
-    if (cleanMsg.includes('recommend') || cleanMsg.includes('suggest') || cleanMsg.includes('eat') || cleanMsg.includes('product') || cleanMsg.includes('hungry')) {
-      const bestProducts = await Product.find({ rating: { $gte: 4.5 }, inStock: true }).limit(3);
-      let productList = bestProducts.map(f => `- **${f.name}** (₹${f.price})`).join('\n');
+    // 4. Smart fallback if GEMINI_API_KEY is not configured or offline
+    if (cleanMsg.includes('paneer')) {
       return res.status(200).json({
-        reply: `Sure, here are some of our top-rated recommendations:\n\n${productList}\n\nYou can also check the Product Mood Selector or Smart Meal Planner on our Homepage for curated results!`
+        reply: "🥘 **Paneer Butter Masala (Quick 15-Min Recipe)**:\n1. Sauté cumin, ginger-garlic paste and onions in butter.\n2. Add pureed tomatoes, cashew paste, turmeric, red chilli & garam masala.\n3. Simmer until aromatic, stir in fresh cream and soft paneer cubes.\n\n🛒 **Ingredients on SimSim**: **Fresh Malai Paneer**, **Amul Butter**, **Tomatoes**, **Cream** (Delivered in 10 mins)!\n\nType **'Add paneer to cart'** to auto-add!"
       });
     }
 
-    // 4. Default fallback friendly AI Persona
+    if (cleanMsg.includes('salad') || cleanMsg.includes('healthy')) {
+      return res.status(200).json({
+        reply: "🥗 **Farm-Fresh Green Detox Salad**:\n- 1 cup diced crunchy Cucumbers & Carrots\n- 1/2 cup fresh Cherry Tomatoes\n- Crisp baby Spinach leaves\n- Dressing: Olive oil, lemon juice & pink salt.\n\nAll organic ingredients delivered in 10 minutes from SimSim!"
+      });
+    }
+
+    // Default friendly AI persona
     res.status(200).json({
-      reply: "Hi! I am **SimSim AI Chef & Grocery Assistant**! ⚡🥦\n\nI can help you with:\n- **Recipe & Ingredients** (e.g., 'Ingredients for Paneer Butter Masala')\n- **Checking Order Status** (type 'where is my order')\n- **Adding items to cart** (e.g., 'Add apples to cart')\n- **Active Coupons** (type 'active coupons')\n\nWhat would you like to cook or order today?"
+      reply: "Namaste! I am **SimSim AI Chef & Grocery Assistant** powered by Gemini! ⚡🥦\n\nAsk me anything! For example:\n- **'Paneer Butter Masala recipe'**\n- **'Healthy breakfast ideas'**\n- **'Add fresh tomatoes to cart'**\n- **'Active coupons'**\n\nWhat can I help you cook or order today?"
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
