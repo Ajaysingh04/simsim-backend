@@ -29,7 +29,7 @@ import User from '../models/User.js';
 const router = express.Router();
 
 // --- AI & Recommendations ---
-router.get('/ai/test-one', async (req, res) => {
+router.get('/ai/status', (req, res) => {
   const envKey = Object.keys(process.env).find(k => 
     k.toLowerCase() === 'gemini_api_key' || 
     k.toLowerCase() === 'gemini_key' || 
@@ -37,20 +37,11 @@ router.get('/ai/test-one', async (req, res) => {
     k.toLowerCase() === 'gemini'
   );
   const key = envKey ? process.env[envKey] : null;
-  const model = req.query.model || 'gemini-2.5-flash-lite';
-
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key.trim()}`;
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: 'Say hi in Hinglish' }] }] })
-    });
-    const data = await r.json();
-    res.json({ model, status: r.status, data });
-  } catch (e) {
-    res.json({ model, error: e.message });
-  }
+  res.json({
+    status: 'online',
+    aiService: 'Google Gemini 3.5 Flash-Lite',
+    active: Boolean(key && key.trim().length > 0)
+  });
 });
 router.get('/ai/recommendations', protect, getAIRecommendations);
 router.get('/ai/filter', getFilteredProducts);

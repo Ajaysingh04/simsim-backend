@@ -152,7 +152,7 @@ LANGUAGE & TONE:
 4. Bold ingredient names (e.g. **Fresh Tomatoes**, **Amul Butter**, **Tata Salt**, **Brown Bread**) and remind them that everything arrives in 10 minutes with SimSim!
 5. Keep your tone cheerful, polite, concise, and structured with bullet points and emojis (⚡, 🥦, 🥘, 🍎, 🛒).`;
 
-  const modelsToTry = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.8-flash'];
+  const modelsToTry = ['gemini-3.5-flash-lite', 'gemini-3.6-flash'];
 
   for (const model of modelsToTry) {
     try {
@@ -173,7 +173,7 @@ LANGUAGE & TONE:
       };
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4500);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
       const response = await fetch(url, {
         method: 'POST',
