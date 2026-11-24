@@ -72,13 +72,7 @@ const isOriginAllowed = (origin) => {
 // Setup Socket.io
 const io = new Server(server, {
   cors: {
-    origin: (origin, callback) => {
-      if (isOriginAllowed(origin)) {
-        callback(null, true);
-        return;
-      }
-      callback(new Error('Not allowed by CORS'));
-    },
+    origin: true,
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -90,13 +84,7 @@ socketHandler(io);
 
 // Middleware
 app.use(cors({
-  origin: (origin, callback) => {
-    if (isOriginAllowed(origin)) {
-      callback(null, true);
-      return;
-    }
-    callback(new Error('Not allowed by CORS'));
-  },
+  origin: true,
   credentials: true
 }));
 app.use(express.json({ limit: '50mb' }));
