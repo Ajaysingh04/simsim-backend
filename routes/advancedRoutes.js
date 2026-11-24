@@ -1,5 +1,5 @@
 import express from 'express';
-import { protect } from '../middleware/authMiddleware.js';
+import { protect, optionalProtect } from '../middleware/authMiddleware.js';
 import {
   getAIRecommendations,
   getFilteredProducts,
@@ -32,7 +32,7 @@ const router = express.Router();
 router.get('/ai/recommendations', protect, getAIRecommendations);
 router.get('/ai/filter', getFilteredProducts);
 router.get('/ai/surprise', getSurpriseProduct);
-router.post('/ai/chatbot', protect, handleChatBot);
+router.post('/ai/chatbot', optionalProtect, handleChatBot);
 
 // --- Group Ordering ---
 router.post('/group/create', protect, createGroupCart);

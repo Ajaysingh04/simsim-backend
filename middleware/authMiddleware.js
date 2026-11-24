@@ -59,3 +59,37 @@ export const restrictTo = (...roles) => {
     next();
   };
 };
+
+export const optionalProtect = async (req, res, next) => {
+  let token;
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+
+  if (!token) {
+    return next();
+  }
+
+  try {
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (clerkSecretKey) {
+      try {
+        const decodedClerk = await verifyToken(token, { secretKey: clerkSecretKey });
+        const user = await User.findOne({ clerkId: decodedClerk.sub });
+        if (user) {
+          req.user = user;
+          return next();
+        }
+      } catch (clerkErr) {
+        // Fall back to local JWT
+      }
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'super_access_secret_12345_67890_abc');
+    req.user = await User.findById(decoded.id).select('-password');
+    next();
+  } catch (error) {
+    // If token error, still proceed as guest
+    next();
+  }
+};
