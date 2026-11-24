@@ -187,16 +187,19 @@ LANGUAGE & TONE:
       if (!response.ok) {
         const errText = await response.text();
         console.warn(`[AI Chef] Model ${model} call failed (${response.status}):`, errText);
-        continue;
+        return { text: null, reason: `${model} error ${response.status}: ${errText.substring(0, 150)}` };
       }
 
       const data = await response.json();
       const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (replyText) {
         return { text: replyText.trim(), modelUsed: model };
+      } else {
+        return { text: null, reason: `${model} returned no text candidate: ${JSON.stringify(data).substring(0, 150)}` };
       }
     } catch (error) {
       console.error(`[AI Chef] Error querying ${model}:`, error.message);
+      return { text: null, reason: `${model} exception: ${error.message}` };
     }
   }
 
@@ -288,7 +291,8 @@ export const handleChatBot = async (req, res) => {
 
     // Default friendly AI persona
     res.status(200).json({
-      reply: "Namaste! I am **SimSim AI Chef & Grocery Assistant** powered by Gemini! ⚡🥦\n\nAsk me anything! For example:\n- **'Paneer Butter Masala recipe'**\n- **'Healthy breakfast ideas'**\n- **'Add fresh tomatoes to cart'**\n- **'Active coupons'**\n\nWhat can I help you cook or order today?"
+      reply: "Namaste! I am **SimSim AI Chef & Grocery Assistant** powered by Gemini! ⚡🥦\n\nAsk me anything! For example:\n- **'Paneer Butter Masala recipe'**\n- **'Healthy breakfast ideas'**\n- **'Add fresh tomatoes to cart'**\n- **'Active coupons'**\n\nWhat can I help you cook or order today?",
+      debugReason: geminiResult?.reason
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
