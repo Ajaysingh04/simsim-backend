@@ -126,11 +126,11 @@ export const getSurpriseProduct = async (req, res) => {
 const callGeminiAI = async (userPrompt) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'your_gemini_api_key' || apiKey.trim().length === 0) {
-    return null;
+    console.log('[AI Chef] GEMINI_API_KEY is not set or empty in environment.');
+    return { text: null, reason: 'KEY_NOT_SET' };
   }
 
-  try {
-    const systemInstruction = `You are "SimSim AI Chef & Quick Grocery Assistant" for SimSim, an instant 10-minute grocery delivery app in India.
+  const systemInstruction = `You are "SimSim AI Chef & Quick Grocery Assistant" for SimSim, an instant 10-minute grocery delivery app in India.
 Your role:
 1. Help customers with cooking recipes, step-by-step instructions, and quick meal ideas (under 15-20 minutes).
 2. Recommend grocery ingredients available in an Indian supermarket (e.g. Amul Milk, Butter, Paneer, Curd, Fresh Tomatoes, Potatoes, Onions, Kashmiri Apples, Bread, Atta, Kurkure, Lays, Coca Cola, etc.).
@@ -138,42 +138,49 @@ Your role:
 4. If asked in Hindi, respond in friendly, natural Hindi or Hinglish. If asked in English, respond in English.
 5. Keep responses concise, well-structured with bullet points and friendly emojis (⚡, 🥦, 🥘, 🍎, 🛒).`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
+  const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-pro'];
 
-    const body = {
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: `${systemInstruction}\n\nCustomer question: ${userPrompt}` }
-          ]
+  for (const model of modelsToTry) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+      const body = {
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: `${systemInstruction}\n\nCustomer question: ${userPrompt}` }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 800
         }
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 800
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.warn(`[AI Chef] Model ${model} call failed (${response.status}):`, errText);
+        continue;
       }
-    };
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.warn('Gemini Flash call failed:', response.status, errText);
-      return null;
+      const data = await response.json();
+      const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (replyText) {
+        return { text: replyText.trim(), modelUsed: model };
+      }
+    } catch (error) {
+      console.error(`[AI Chef] Error querying ${model}:`, error.message);
     }
-
-    const data = await response.json();
-    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    return replyText ? replyText.trim() : null;
-  } catch (error) {
-    console.error('Gemini API request error:', error.message);
-    return null;
   }
+
+  return { text: null, reason: 'ALL_MODELS_FAILED' };
 };
 
 // AI Chatbot Assistant handler
@@ -238,10 +245,11 @@ export const handleChatBot = async (req, res) => {
     }
 
     // 3. Invoke Google Gemini Free AI
-    const geminiReply = await callGeminiAI(message);
-    if (geminiReply) {
+    const geminiResult = await callGeminiAI(message);
+    if (geminiResult && geminiResult.text) {
       return res.status(200).json({
-        reply: geminiReply
+        reply: geminiResult.text,
+        model: geminiResult.modelUsed
       });
     }
 

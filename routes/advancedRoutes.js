@@ -29,6 +29,15 @@ import User from '../models/User.js';
 const router = express.Router();
 
 // --- AI & Recommendations ---
+router.get('/ai/status', (req, res) => {
+  const key = process.env.GEMINI_API_KEY;
+  res.json({
+    status: 'online',
+    hasGeminiKey: Boolean(key && key !== 'your_gemini_api_key' && key.trim().length > 0),
+    keyPrefix: key ? (key.substring(0, 6) + '...') : null,
+    keyLength: key ? key.length : 0
+  });
+});
 router.get('/ai/recommendations', protect, getAIRecommendations);
 router.get('/ai/filter', getFilteredProducts);
 router.get('/ai/surprise', getSurpriseProduct);
