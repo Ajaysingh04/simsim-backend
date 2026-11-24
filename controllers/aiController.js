@@ -124,7 +124,7 @@ export const getSurpriseProduct = async (req, res) => {
 
 // Google Gemini API integration (Free Tier via Google AI Studio)
 const callGeminiAI = async (userPrompt) => {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || process.env.GEMINI;
   if (!apiKey || apiKey === 'your_gemini_api_key' || apiKey.trim().length === 0) {
     console.log('[AI Chef] GEMINI_API_KEY is not set or empty in environment.');
     return { text: null, reason: 'KEY_NOT_SET' };

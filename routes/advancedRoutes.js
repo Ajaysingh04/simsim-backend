@@ -30,12 +30,17 @@ const router = express.Router();
 
 // --- AI & Recommendations ---
 router.get('/ai/status', (req, res) => {
-  const key = process.env.GEMINI_API_KEY;
+  const key = process.env.GEMINI_API_KEY || process.env.GEMINI_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || process.env.GEMINI;
+  const envKeys = Object.keys(process.env).filter(k => 
+    !k.includes('PASS') && !k.includes('SECRET') && !k.includes('URI')
+  );
   res.json({
     status: 'online',
     hasGeminiKey: Boolean(key && key !== 'your_gemini_api_key' && key.trim().length > 0),
     keyPrefix: key ? (key.substring(0, 6) + '...') : null,
-    keyLength: key ? key.length : 0
+    keyLength: key ? key.length : 0,
+    matchingEnvKeys: Object.keys(process.env).filter(k => k.toUpperCase().includes('GEMINI') || k.toUpperCase().includes('GOOGLE') || k.toUpperCase().includes('AI')),
+    allSafeEnvKeys: envKeys
   });
 });
 router.get('/ai/recommendations', protect, getAIRecommendations);
