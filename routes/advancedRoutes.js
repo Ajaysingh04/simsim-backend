@@ -29,7 +29,7 @@ import User from '../models/User.js';
 const router = express.Router();
 
 // --- AI & Recommendations ---
-router.get('/ai/diagnose', async (req, res) => {
+router.get('/ai/test-one', async (req, res) => {
   const envKey = Object.keys(process.env).find(k => 
     k.toLowerCase() === 'gemini_api_key' || 
     k.toLowerCase() === 'gemini_key' || 
@@ -37,25 +37,20 @@ router.get('/ai/diagnose', async (req, res) => {
     k.toLowerCase() === 'gemini'
   );
   const key = envKey ? process.env[envKey] : null;
-  const models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.8-flash'];
-  const results = {};
+  const model = req.query.model || 'gemini-2.5-flash-lite';
 
-  for (const m of models) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key.trim()}`;
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: 'Hello' }] }] })
-      });
-      const txt = await r.text();
-      results[m] = { status: r.status, body: txt.substring(0, 200) };
-    } catch (e) {
-      results[m] = { error: e.message };
-    }
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key.trim()}`;
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: 'Say hi in Hinglish' }] }] })
+    });
+    const data = await r.json();
+    res.json({ model, status: r.status, data });
+  } catch (e) {
+    res.json({ model, error: e.message });
   }
-
-  res.json(results);
 });
 router.get('/ai/recommendations', protect, getAIRecommendations);
 router.get('/ai/filter', getFilteredProducts);
