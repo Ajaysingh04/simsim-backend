@@ -7,7 +7,9 @@ import {
   getVendorEarnings,
   getVendorStaff,
   addVendorStaff,
-  getVendorReports
+  getVendorReports,
+  getVendorOrders,
+  updateVendorOrderStatus
 } from '../controllers/vendorDashboardController.js';
 import vendorDeliveryRoutes from './vendorDeliveryRoutes.js';
 import {
@@ -33,9 +35,9 @@ router.use(protect, restrictTo('partner', 'admin', 'vendor'));
 // Dashboard
 router.get('/dashboard', getVendorDashboard);
 
-// Orders
-router.get('/orders', getOrders);
-router.put('/orders/:id/status', updateOrderStatus);
+// Orders (Direct live order feed for vendor app)
+router.get('/orders', getVendorOrders);
+router.put('/orders/:id/status', updateVendorOrderStatus);
 
 // Products / Menu
 router.get('/products', getMenu);
