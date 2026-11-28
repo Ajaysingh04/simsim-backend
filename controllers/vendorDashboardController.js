@@ -363,7 +363,7 @@ export const getVendorOrders = async (req, res) => {
           orderNumber: 'SIM-8821',
           status: 'placed',
           createdAt: new Date(Date.now() - 5 * 60000),
-          user: { name: 'Priya Sharma', phone: '+91 98765 12345' },
+          user: { name: 'Priya Sharma', phone: '+91 98765 12345', email: 'priya@gmail.com' },
           deliveryAddress: { street: 'Flat 402, Tower B, Sector 62, Noida' },
           paymentDetails: { method: 'upi', status: 'paid' },
           billDetails: { grandTotal: 385 },
@@ -378,7 +378,7 @@ export const getVendorOrders = async (req, res) => {
           orderNumber: 'SIM-8820',
           status: 'preparing',
           createdAt: new Date(Date.now() - 15 * 60000),
-          user: { name: 'Vikram Mehta', phone: '+91 98112 34567' },
+          user: { name: 'Vikram Mehta', phone: '+91 98112 34567', email: 'vikram@gmail.com' },
           deliveryAddress: { street: 'House 14, Block C, Green View Apts' },
           paymentDetails: { method: 'online', status: 'paid' },
           billDetails: { grandTotal: 540 },
@@ -391,10 +391,29 @@ export const getVendorOrders = async (req, res) => {
       ];
     }
 
+    const normalizedOrders = orders.map((o) => {
+      const obj = o.toObject ? o.toObject() : o;
+      const addrStr = typeof obj.deliveryAddress === 'string'
+        ? obj.deliveryAddress
+        : (obj.deliveryAddress?.street || obj.deliveryAddress?.address || obj.deliveryAddress?.landmark || 'Sector 62, Noida');
+      
+      return {
+        ...obj,
+        orderNumber: obj.orderNumber || `SIM-${(obj._id || '').toString().slice(-4).toUpperCase()}`,
+        totalAmount: obj.totalAmount || obj.billDetails?.grandTotal || 0,
+        user: {
+          name: obj.user?.name || obj.deliveryAddress?.name || 'Customer',
+          phone: obj.user?.phone || obj.deliveryAddress?.phone || '+91 98765 00000',
+          email: obj.user?.email || 'customer@simsim.com'
+        },
+        deliveryAddress: addrStr
+      };
+    });
+
     res.status(200).json({
       success: true,
-      count: orders.length,
-      data: orders
+      count: normalizedOrders.length,
+      data: normalizedOrders
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
