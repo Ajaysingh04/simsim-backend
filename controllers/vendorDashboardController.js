@@ -346,7 +346,7 @@ export const getVendorOrders = async (req, res) => {
     const store = await getVendorStore(req.user._id);
     let query = {};
     if (store?._id) {
-      query = { $or: [{ store: store._id }, { store: null }] };
+      query = { $or: [{ store: store._id }, { store: { $exists: true } }, { store: null }] };
     }
 
     let orders = await Order.find(query)

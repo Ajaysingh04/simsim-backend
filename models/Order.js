@@ -10,9 +10,9 @@ const orderSchema = new mongoose.Schema({
   }],
   deliveryAddress: {
     street: { type: String, required: true },
-    city: { type: String, required: true },
-    state: { type: String, required: true },
-    zipCode: { type: String, required: true }
+    city: { type: String, default: 'Noida' },
+    state: { type: String, default: 'Uttar Pradesh' },
+    zipCode: { type: String, default: '201301' }
   },
   billDetails: {
     subtotal: { type: Number, required: true },
@@ -29,14 +29,32 @@ const orderSchema = new mongoose.Schema({
   },
   couponApplied: { type: mongoose.Schema.Types.ObjectId, ref: 'Coupon' },
   paymentDetails: {
-    method: { type: String, enum: ['cod', 'card', 'upi'], required: true },
+    method: { type: String, enum: ['cod', 'card', 'upi', 'online', 'wallet', 'netbanking'], default: 'upi', required: true },
     gateway: { type: String, enum: ['stripe', 'razorpay', 'none'], default: 'none' },
     paymentId: { type: String },
     status: { type: String, enum: ['pending', 'paid', 'completed', 'failed', 'refund_requested', 'refunded'], default: 'pending' }
   },
   status: {
     type: String,
-    enum: ['placed', 'confirmed', 'preparing', 'ready', 'out-for-delivery', 'delivered', 'cancelled'],
+    enum: [
+      'pending_payment',
+      'placed',
+      'confirmed',
+      'preparing',
+      'ready',
+      'ready_for_pickup',
+      'searching_rider',
+      'rider_assigned',
+      'picked_up',
+      'out_for_delivery',
+      'out-for-delivery',
+      'arrived',
+      'delivered',
+      'cancelled',
+      'rejected',
+      'refund_pending',
+      'refunded'
+    ],
     default: 'placed',
     index: true
   },

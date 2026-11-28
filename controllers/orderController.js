@@ -224,12 +224,28 @@ export const createOrder = async (req, res) => {
 
     const grandTotal = subtotal + deliveryFee + codCharge + extraDistanceSurcharge + customChargesTotal - discount;
 
+    // Normalize delivery address
+    const normalizedAddress = {
+      street: typeof deliveryAddress === 'string'
+        ? deliveryAddress
+        : (deliveryAddress?.street || deliveryAddress?.address || deliveryAddress?.formattedAddress || 'Customer Address'),
+      city: typeof deliveryAddress === 'object' && deliveryAddress?.city ? deliveryAddress.city : 'Noida',
+      state: typeof deliveryAddress === 'object' && deliveryAddress?.state ? deliveryAddress.state : 'Uttar Pradesh',
+      zipCode: typeof deliveryAddress === 'object' ? (deliveryAddress.zipCode || deliveryAddress.pincode || deliveryAddress.postalCode || '201301') : '201301'
+    };
+
+    // Normalize payment method
+    let normalizedPaymentMethod = (paymentMethod || 'upi').toLowerCase();
+    if (!['cod', 'card', 'upi', 'online', 'wallet', 'netbanking'].includes(normalizedPaymentMethod)) {
+      normalizedPaymentMethod = 'upi';
+    }
+
     // 4. Create Order database record
     const order = await Order.create({
       user: req.user._id,
       store: storeId,
       items: dbItems,
-      deliveryAddress,
+      deliveryAddress: normalizedAddress,
       billDetails: {
         subtotal,
         deliveryFee,
@@ -242,9 +258,9 @@ export const createOrder = async (req, res) => {
       },
       couponApplied: couponAppliedId,
       paymentDetails: {
-        method: paymentMethod,
-        status: (paymentMethod === 'cod' || !preVerified) ? 'pending' : 'paid',
-        gateway: paymentMethod === 'cod' ? 'none' : 'razorpay',
+        method: normalizedPaymentMethod,
+        status: (normalizedPaymentMethod === 'cod' || !preVerified) ? 'pending' : 'paid',
+        gateway: normalizedPaymentMethod === 'cod' ? 'none' : 'razorpay',
         paymentId: preVerified ? `mock_rzp_${Date.now()}` : undefined
       }
     });
@@ -292,21 +308,31 @@ export const createOrder = async (req, res) => {
       .populate('user', 'name email phone')
       .populate('items.product', 'name image price isVeg');
 
-    // Trigger websocket for delivery partners and admins to pick it up
-    if (global.io && order.status === 'placed') {
-      global.io.to('delivery_partners').emit('newOrderAvailable', populatedOrder || order);
-      // Emit to admin dashboard
+    // Trigger websocket for vendor, delivery partners and admins to pick it up in real time
+    if (global.io) {
+      // 1. Broadcast to all active vendor dashboards & stores
       global.io.emit('newOrderReceived', populatedOrder || order);
+      global.io.emit('new_order', populatedOrder || order);
+      global.io.emit('newOrderAvailable', populatedOrder || order);
+
+      // 2. Emit to specific store room & owner
+      if (storeId) {
+        global.io.to(`store_${storeId}`).emit('newOrder', populatedOrder || order);
+        global.io.emit(`newOrderStore_${storeId}`, populatedOrder || order);
+      }
+      if (populatedOrder?.store?.owner) {
+        global.io.emit(`newOrderPartner_${populatedOrder.store.owner.toString()}`, populatedOrder || order);
+      }
+
+      // 3. Emit to delivery partners room
+      global.io.to('delivery_partners').emit('newOrderAvailable', populatedOrder || order);
+
+      // 4. Emit to admin dashboard
       global.io.emit('adminNotification', {
         title: 'New Order Received',
         message: `Order #${(order._id).toString().slice(-6).toUpperCase()} received from ${populatedOrder?.user?.name || 'Customer'}.`,
         date: new Date().toISOString()
       });
-      
-      // Emit specifically to the store owner if connected
-      if (populatedOrder?.store?.owner) {
-        global.io.emit(`newOrderPartner_${populatedOrder.store.owner.toString()}`, populatedOrder);
-      }
     }
 
     // Return populated order
