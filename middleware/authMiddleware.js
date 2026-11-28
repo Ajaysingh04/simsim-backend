@@ -93,16 +93,6 @@ export const optionalProtect = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'super_access_secret_12345_67890_abc');
-    req.user = await User.findById(decoded.id).select('-password');
-    next();
-  } catch (error) {
-    next();
-  }
-};
-  }
-
-  try {
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (clerkSecretKey) {
       try {
