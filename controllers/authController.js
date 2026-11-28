@@ -474,28 +474,28 @@ export const demoLogin = async (req, res) => {
 
   const demoProfiles = {
     admin: {
-      name: 'Super Admin (Demo)',
+      name: 'SimSim Super Admin',
       email: 'admin.demo@quickcommerce.com',
       phone: '9876543210',
       role: 'admin',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
     },
     partner: {
-      name: 'Store Partner (Demo)',
+      name: 'SimSim Store Partner',
       email: 'partner.demo@quickcommerce.com',
       phone: '9876543211',
       role: 'partner',
       avatar: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=200&q=80',
     },
     delivery: {
-      name: 'Delivery Rider (Demo)',
+      name: 'Rahul Sharma (Rider)',
       email: 'delivery.demo@quickcommerce.com',
       phone: '9876543212',
       role: 'delivery',
       avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
     },
     user: {
-      name: 'Customer (Demo)',
+      name: 'Ajay Singh',
       email: 'customer.demo@quickcommerce.com',
       phone: '9876543213',
       role: 'user',

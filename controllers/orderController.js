@@ -245,7 +245,8 @@ export const createOrder = async (req, res) => {
     }
 
     // 4. Resolve Customer User ID and exact Customer details
-    const resolvedCustomerName = req.body.customerName || req.body.user?.name || req.body.deliveryAddress?.customerName || req.user?.name || 'Customer';
+    let resolvedCustomerName = req.body.customerName || req.body.user?.name || req.body.deliveryAddress?.customerName || req.user?.name || 'Customer';
+    resolvedCustomerName = resolvedCustomerName.replace(/\s*\(Demo\)/gi, '').replace(/\bDemo\b/gi, '').trim() || 'Ajay Singh';
     const resolvedCustomerPhone = req.body.customerPhone || req.body.user?.phone || req.body.deliveryAddress?.customerPhone || req.body.deliveryAddress?.phone || req.user?.phone || '+91 98765 43210';
     const resolvedCustomerEmail = req.body.customerEmail || req.body.user?.email || req.user?.email || 'customer@simsim.com';
 
@@ -264,6 +265,9 @@ export const createOrder = async (req, res) => {
           role: 'user',
           password: 'SimSimUser123!'
         });
+      } else if (defaultUser.name && (defaultUser.name.includes('Demo') || defaultUser.name === 'Customer')) {
+        defaultUser.name = resolvedCustomerName;
+        await defaultUser.save();
       }
       orderUserId = defaultUser._id;
     }
@@ -513,7 +517,7 @@ export const getAssignedOrders = async (req, res) => {
         ...obj,
         orderNumber: obj.orderNumber || `SIM-${(obj._id || '').toString().slice(-4).toUpperCase()}`,
         totalAmount: obj.totalAmount || obj.billDetails?.grandTotal || 0,
-        customerName: obj.customerName || obj.user?.name || obj.deliveryAddress?.customerName || 'Customer',
+        customerName: (obj.customerName || obj.user?.name || obj.deliveryAddress?.customerName || 'Ajay Singh').replace(/\s*\(Demo\)/gi, '').replace(/\bDemo\b/gi, '').trim() || 'Ajay Singh',
         customerPhone: obj.customerPhone || obj.user?.phone || obj.deliveryAddress?.customerPhone || '+91 98765 43210',
         deliveryAddress: typeof obj.deliveryAddress === 'string'
           ? obj.deliveryAddress

@@ -382,7 +382,7 @@ export const getVendorOrders = async (req, res) => {
         orderNumber: obj.orderNumber || `SIM-${(obj._id || '').toString().slice(-4).toUpperCase()}`,
         totalAmount: obj.totalAmount || obj.billDetails?.grandTotal || 0,
         user: {
-          name: obj.customerName || obj.user?.name || obj.deliveryAddress?.customerName || obj.deliveryAddress?.name || 'Customer',
+          name: (obj.customerName || obj.user?.name || obj.deliveryAddress?.customerName || obj.deliveryAddress?.name || 'Ajay Singh').replace(/\s*\(Demo\)/gi, '').replace(/\bDemo\b/gi, '').trim() || 'Ajay Singh',
           phone: obj.customerPhone || obj.user?.phone || obj.deliveryAddress?.customerPhone || obj.deliveryAddress?.phone || '+91 98765 00000',
           email: obj.customerEmail || obj.user?.email || 'customer@simsim.com'
         },
