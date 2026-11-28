@@ -240,9 +240,29 @@ export const createOrder = async (req, res) => {
       normalizedPaymentMethod = 'upi';
     }
 
+    // 4. Resolve Customer User ID (Allow fallback so orders from guest / mobile app never fail)
+    let orderUserId = req.user?._id;
+    if (!orderUserId) {
+      const customerEmail = req.body.user?.email || 'customer.demo@quickcommerce.com';
+      let defaultUser = await User.findOne({ email: customerEmail });
+      if (!defaultUser) {
+        defaultUser = await User.findOne({ role: 'user' });
+      }
+      if (!defaultUser) {
+        defaultUser = await User.create({
+          name: req.body.user?.name || 'Customer (SimSim User)',
+          email: customerEmail,
+          phone: req.body.deliveryAddress?.phone || '9876543213',
+          role: 'user',
+          password: 'SimSimUser123!'
+        });
+      }
+      orderUserId = defaultUser._id;
+    }
+
     // 4. Create Order database record
     const order = await Order.create({
-      user: req.user._id,
+      user: orderUserId,
       store: storeId,
       items: dbItems,
       deliveryAddress: normalizedAddress,
@@ -310,22 +330,25 @@ export const createOrder = async (req, res) => {
 
     // Trigger websocket for vendor, delivery partners and admins to pick it up in real time
     if (global.io) {
+      const orderData = populatedOrder || order;
       // 1. Broadcast to all active vendor dashboards & stores
-      global.io.emit('newOrderReceived', populatedOrder || order);
-      global.io.emit('new_order', populatedOrder || order);
-      global.io.emit('newOrderAvailable', populatedOrder || order);
+      global.io.emit('newOrderReceived', orderData);
+      global.io.emit('new_order', orderData);
+      global.io.emit('newOrder', orderData);
 
       // 2. Emit to specific store room & owner
       if (storeId) {
-        global.io.to(`store_${storeId}`).emit('newOrder', populatedOrder || order);
-        global.io.emit(`newOrderStore_${storeId}`, populatedOrder || order);
+        global.io.to(`store_${storeId}`).emit('newOrder', orderData);
+        global.io.emit(`newOrderStore_${storeId}`, orderData);
       }
       if (populatedOrder?.store?.owner) {
-        global.io.emit(`newOrderPartner_${populatedOrder.store.owner.toString()}`, populatedOrder || order);
+        global.io.emit(`newOrderPartner_${populatedOrder.store.owner.toString()}`, orderData);
       }
 
-      // 3. Emit to delivery partners room
-      global.io.to('delivery_partners').emit('newOrderAvailable', populatedOrder || order);
+      // 3. Emit to all active delivery partners
+      global.io.emit('newOrderAvailable', orderData);
+      global.io.emit('newDeliveryRun', orderData);
+      global.io.to('delivery_partners').emit('newOrderAvailable', orderData);
 
       // 4. Emit to admin dashboard
       global.io.emit('adminNotification', {

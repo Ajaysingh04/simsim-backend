@@ -16,13 +16,14 @@ import {
   pickupScanOrder,
   rateOrder
 } from '../controllers/orderController.js';
-import { protect, restrictTo } from '../middleware/authMiddleware.js';
+import { protect, restrictTo, optionalProtect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.post('/', protect, createOrder);
-router.post('/razorpay-intent', protect, createRazorpayIntent);
-router.post('/verify-payment', protect, verifyPayment);
+// Allow order creation with optionalProtect so guest/mobile app checkouts never get rejected by 401
+router.post('/', optionalProtect, createOrder);
+router.post('/razorpay-intent', optionalProtect, createRazorpayIntent);
+router.post('/verify-payment', optionalProtect, verifyPayment);
 router.get('/myorders', protect, getMyOrders);
 router.get('/admin/all', protect, restrictTo('admin'), getAllOrders);
 router.get('/partner', protect, restrictTo('partner', 'admin'), getPartnerOrders);

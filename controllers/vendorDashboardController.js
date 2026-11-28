@@ -461,10 +461,14 @@ export const updateVendorOrderStatus = async (req, res) => {
       }
     }
 
-    // Broadcast live event to Customer App & WebSockets
+    // Broadcast live event to Customer App, Delivery Partners & Admin WebSockets
     if (global.io) {
       global.io.emit('orderStatusUpdated', { orderId: order._id, status: order.status });
       global.io.emit(`order_${order._id}_status`, { orderId: order._id, status: order.status });
+      global.io.emit('newOrderAvailable', order);
+      global.io.emit('newDeliveryRun', order);
+      global.io.to('delivery_partners').emit('newOrderAvailable', order);
+      global.io.emit('adminOrderUpdate', { orderId: order._id, status: order.status });
     }
 
     res.status(200).json({
