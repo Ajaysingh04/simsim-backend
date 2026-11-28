@@ -495,14 +495,27 @@ export const getPartnerOrders = async (req, res) => {
 export const getAssignedOrders = async (req, res) => {
   try {
     const userId = req.user?._id;
+    const activeStatuses = [
+      'placed',
+      'confirmed',
+      'preparing',
+      'ready',
+      'ready_for_pickup',
+      'accepted',
+      'searching_rider',
+      'rider_assigned',
+      'picked_up',
+      'out_for_delivery',
+      'out-for-delivery'
+    ];
     const query = userId
       ? {
           $or: [
             { deliveryPartner: userId },
-            { status: { $in: ['placed', 'preparing', 'ready', 'ready_for_pickup', 'accepted'] } }
+            { status: { $in: activeStatuses } }
           ]
         }
-      : { status: { $in: ['placed', 'preparing', 'ready', 'ready_for_pickup', 'accepted'] } };
+      : { status: { $in: activeStatuses } };
 
     const orders = await Order.find(query)
       .populate('store', 'name bannerImage coordinates deliveryAddress')

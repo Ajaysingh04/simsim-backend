@@ -442,12 +442,37 @@ export const updateVendorOrderStatus = async (req, res) => {
     }
 
     // Broadcast live event to Customer App, Delivery Partners & Admin WebSockets
+    const populated = await Order.findById(order._id)
+      .populate('store', 'name bannerImage distance address')
+      .populate('user', 'name email phone')
+      .populate('items.product', 'name price image isVeg');
+
+    const rawObj = populated ? populated.toObject() : order.toObject();
+    const orderData = {
+      ...rawObj,
+      orderNumber: rawObj.orderNumber || `SIM-${(rawObj._id || '').toString().slice(-4).toUpperCase()}`,
+      totalAmount: rawObj.billDetails?.grandTotal || rawObj.totalAmount || 0,
+      customerName: (rawObj.customerName || rawObj.user?.name || rawObj.deliveryAddress?.customerName || 'Ajay Singh').replace(/\s*\(Demo\)/gi, '').replace(/\bDemo\b/gi, '').trim() || 'Ajay Singh',
+      customerPhone: rawObj.customerPhone || rawObj.user?.phone || rawObj.deliveryAddress?.customerPhone || '+91 98765 43210',
+      user: {
+        _id: rawObj.user?._id,
+        name: (rawObj.customerName || rawObj.user?.name || 'Ajay Singh').replace(/\s*\(Demo\)/gi, '').replace(/\bDemo\b/gi, '').trim() || 'Ajay Singh',
+        phone: rawObj.customerPhone || rawObj.user?.phone || '+91 98765 43210',
+        email: rawObj.customerEmail || rawObj.user?.email || 'customer@simsim.com'
+      },
+      deliveryAddress: typeof rawObj.deliveryAddress === 'string'
+        ? rawObj.deliveryAddress
+        : (rawObj.deliveryAddress?.street || rawObj.deliveryAddress?.address || 'Sector 62, Noida'),
+      store: rawObj.store || { name: 'SimSim Dark Store - Sector 62', address: 'Plot 42, Sector 62, Noida', distance: '0.6 km' }
+    };
+
     if (global.io) {
       global.io.emit('orderStatusUpdated', { orderId: order._id, status: order.status });
       global.io.emit(`order_${order._id}_status`, { orderId: order._id, status: order.status });
-      global.io.emit('newOrderAvailable', order);
-      global.io.emit('newDeliveryRun', order);
-      global.io.to('delivery_partners').emit('newOrderAvailable', order);
+      global.io.emit('newOrderAvailable', orderData);
+      global.io.emit('newDeliveryRun', orderData);
+      global.io.emit('newOrderReceived', orderData);
+      global.io.to('delivery_partners').emit('newOrderAvailable', orderData);
       global.io.emit('adminOrderUpdate', { orderId: order._id, status: order.status });
     }
 
