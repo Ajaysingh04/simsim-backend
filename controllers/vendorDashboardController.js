@@ -366,40 +366,9 @@ export const getVendorOrders = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(50);
 
-    // If completely empty, return structured demo orders
-    if (!orders || orders.length === 0) {
-      orders = [
-        {
-          _id: 'ord_demo_8821',
-          orderNumber: 'SIM-8821',
-          status: 'placed',
-          createdAt: new Date(Date.now() - 5 * 60000),
-          user: { name: 'Priya Sharma', phone: '+91 98765 12345', email: 'priya@gmail.com' },
-          deliveryAddress: { street: 'Flat 402, Tower B, Sector 62, Noida' },
-          paymentDetails: { method: 'upi', status: 'paid' },
-          billDetails: { grandTotal: 385 },
-          items: [
-            { product: { name: 'Amul Butter 100g', price: 58 }, quantity: 2 },
-            { product: { name: 'Harvest Gold Brown Bread 400g', price: 45 }, quantity: 1 },
-            { product: { name: 'Mother Dairy Full Cream Milk 1L', price: 68 }, quantity: 2 }
-          ]
-        },
-        {
-          _id: 'ord_demo_8820',
-          orderNumber: 'SIM-8820',
-          status: 'preparing',
-          createdAt: new Date(Date.now() - 15 * 60000),
-          user: { name: 'Vikram Mehta', phone: '+91 98112 34567', email: 'vikram@gmail.com' },
-          deliveryAddress: { street: 'House 14, Block C, Green View Apts' },
-          paymentDetails: { method: 'online', status: 'paid' },
-          billDetails: { grandTotal: 540 },
-          items: [
-            { product: { name: 'Fresh Malai Paneer 200g', price: 110 }, quantity: 2 },
-            { product: { name: 'Kashmiri Apples 1kg', price: 180 }, quantity: 1 },
-            { product: { name: 'Maggi 2-Minute Noodles 4-Pack', price: 60 }, quantity: 1 }
-          ]
-        }
-      ];
+    // Return only genuine live orders from MongoDB
+    if (!orders) {
+      orders = [];
     }
 
     const normalizedOrders = orders.map((o) => {
