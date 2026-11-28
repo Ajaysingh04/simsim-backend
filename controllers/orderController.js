@@ -240,19 +240,23 @@ export const createOrder = async (req, res) => {
       normalizedPaymentMethod = 'upi';
     }
 
-    // 4. Resolve Customer User ID (Allow fallback so orders from guest / mobile app never fail)
+    // 4. Resolve Customer User ID and exact Customer details
+    const resolvedCustomerName = req.body.customerName || req.body.user?.name || req.body.deliveryAddress?.customerName || req.user?.name || 'Customer';
+    const resolvedCustomerPhone = req.body.customerPhone || req.body.user?.phone || req.body.deliveryAddress?.customerPhone || req.body.deliveryAddress?.phone || req.user?.phone || '+91 98765 43210';
+    const resolvedCustomerEmail = req.body.customerEmail || req.body.user?.email || req.user?.email || 'customer@simsim.com';
+
     let orderUserId = req.user?._id;
     if (!orderUserId) {
-      const customerEmail = req.body.user?.email || 'customer.demo@quickcommerce.com';
+      const customerEmail = resolvedCustomerEmail;
       let defaultUser = await User.findOne({ email: customerEmail });
       if (!defaultUser) {
         defaultUser = await User.findOne({ role: 'user' });
       }
       if (!defaultUser) {
         defaultUser = await User.create({
-          name: req.body.user?.name || 'Customer (SimSim User)',
+          name: resolvedCustomerName,
           email: customerEmail,
-          phone: req.body.deliveryAddress?.phone || '9876543213',
+          phone: resolvedCustomerPhone,
           role: 'user',
           password: 'SimSimUser123!'
         });
@@ -263,6 +267,9 @@ export const createOrder = async (req, res) => {
     // 4. Create Order database record
     const order = await Order.create({
       user: orderUserId,
+      customerName: resolvedCustomerName,
+      customerPhone: resolvedCustomerPhone,
+      customerEmail: resolvedCustomerEmail,
       store: storeId,
       items: dbItems,
       deliveryAddress: normalizedAddress,
@@ -329,8 +336,23 @@ export const createOrder = async (req, res) => {
       .populate('items.product', 'name image price isVeg');
 
     // Trigger websocket for vendor, delivery partners and admins to pick it up in real time
+    const rawOrderObj = populatedOrder ? populatedOrder.toObject() : order.toObject();
+    const orderData = {
+      ...rawOrderObj,
+      orderNumber: rawOrderObj.orderNumber || `SIM-${(rawOrderObj._id).toString().slice(-4).toUpperCase()}`,
+      totalAmount: rawOrderObj.billDetails?.grandTotal || grandTotal,
+      user: {
+        _id: rawOrderObj.user?._id || orderUserId,
+        name: resolvedCustomerName,
+        phone: resolvedCustomerPhone,
+        email: resolvedCustomerEmail
+      },
+      deliveryAddress: typeof rawOrderObj.deliveryAddress === 'string'
+        ? rawOrderObj.deliveryAddress
+        : (rawOrderObj.deliveryAddress?.street || 'Sector 62, Noida')
+    };
+
     if (global.io) {
-      const orderData = populatedOrder || order;
       // 1. Broadcast to all active vendor dashboards & stores
       global.io.emit('newOrderReceived', orderData);
       global.io.emit('new_order', orderData);

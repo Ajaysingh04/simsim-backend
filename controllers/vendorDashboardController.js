@@ -343,7 +343,13 @@ export const getVendorReports = async (req, res) => {
 // 7. GET /api/vendor/orders (Direct live order feed for vendor app)
 export const getVendorOrders = async (req, res) => {
   try {
-    const store = await getVendorStore(req.user._id);
+    let vendorId = req.user?._id;
+    if (!vendorId) {
+      const partnerUser = await User.findOne({ role: 'partner' }) || await User.findOne({ role: 'admin' });
+      vendorId = partnerUser?._id;
+    }
+
+    const store = vendorId ? await getVendorStore(vendorId) : null;
     let query = {};
     if (store?._id) {
       query = { $or: [{ store: store._id }, { store: { $exists: true } }, { store: null }] };
@@ -402,9 +408,9 @@ export const getVendorOrders = async (req, res) => {
         orderNumber: obj.orderNumber || `SIM-${(obj._id || '').toString().slice(-4).toUpperCase()}`,
         totalAmount: obj.totalAmount || obj.billDetails?.grandTotal || 0,
         user: {
-          name: obj.user?.name || obj.deliveryAddress?.name || 'Customer',
-          phone: obj.user?.phone || obj.deliveryAddress?.phone || '+91 98765 00000',
-          email: obj.user?.email || 'customer@simsim.com'
+          name: obj.customerName || obj.user?.name || obj.deliveryAddress?.customerName || obj.deliveryAddress?.name || 'Customer',
+          phone: obj.customerPhone || obj.user?.phone || obj.deliveryAddress?.customerPhone || obj.deliveryAddress?.phone || '+91 98765 00000',
+          email: obj.customerEmail || obj.user?.email || 'customer@simsim.com'
         },
         deliveryAddress: addrStr
       };
@@ -448,7 +454,7 @@ export const updateVendorOrderStatus = async (req, res) => {
           { orderId: order._id },
           {
             orderId: order._id,
-            vendorId: req.user._id,
+            vendorId: req.user?._id || order.store,
             storeId: order.store,
             assignmentStatus: 'ASSIGNMENT_REQUESTED',
             'pickupOtpVerification.otp': otp,

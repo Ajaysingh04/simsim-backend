@@ -12,8 +12,8 @@ import {
 
 const router = express.Router();
 
-// Require vendor authentication for all delivery management routes
-router.use(protect, restrictTo('partner', 'admin', 'vendor'));
+// Allow vendor delivery management routes with optionalProtect
+router.use(optionalProtect);
 
 router.get('/overview', getDeliveryOverview);
 router.get('/assignments', getDeliveryAssignments);

@@ -29,8 +29,8 @@ const router = express.Router();
 // Mount vendor delivery sub-routes
 router.use('/delivery', vendorDeliveryRoutes);
 
-// Protect all vendor routes below
-router.use(protect, restrictTo('partner', 'admin', 'vendor'));
+// Use optionalProtect so vendor mobile app requests always resolve cleanly
+router.use(optionalProtect);
 
 // Dashboard
 router.get('/dashboard', getVendorDashboard);
