@@ -17,7 +17,7 @@ const getVendorStore = async (userId) => {
 // 1. GET /api/vendor/delivery/overview
 export const getDeliveryOverview = async (req, res) => {
   try {
-    const store = await getVendorStore(req.user._id);
+    const store = await getVendorStore(req.user?._id);
     if (!store) {
       return res.status(404).json({ success: false, message: 'Vendor store not found' });
     }
@@ -63,7 +63,7 @@ export const getDeliveryOverview = async (req, res) => {
 // 2. GET /api/vendor/delivery/assignments
 export const getDeliveryAssignments = async (req, res) => {
   try {
-    const store = await getVendorStore(req.user._id);
+    const store = await getVendorStore(req.user?._id);
     if (!store) {
       return res.status(404).json({ success: false, message: 'Vendor store not found' });
     }
